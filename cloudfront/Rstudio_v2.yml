@@ -243,7 +243,7 @@ Resources:
           cd rstudio
           git clone https://github.com/Data-Observatory/ec2-machines.git
 
-          sudo cp -v /home/ec2-user/rstudio/config-files/rstudio/docker_boot.service /etc/systemd/system
+          sudo cp -v /home/ec2-user/ec2-machines/config-files/rstudio/docker_boot.service /etc/systemd/system
           sudo systemctl enable docker_boot.service
           sudo systemctl start docker_boot.service
 

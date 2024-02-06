@@ -6,7 +6,7 @@ After=docker.service
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/home/ec2-user/rstudio
-ExecStart=/usr/bin/docker-compose -f /home/ec2-user/rstudio/config-files/rstudio/docker-compose.yml up -d --remove-orphans
+ExecStart=/usr/bin/docker-compose -f /home/ec2-user/ec2-machines/config-files/rstudio/docker-compose.yml up -d --remove-orphans
 
 [Install]
 WantedBy=multi-user.target
