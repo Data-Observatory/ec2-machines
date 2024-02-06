@@ -237,10 +237,10 @@ Resources:
           sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/bin/docker-compose
           sudo chmod +x /usr/bin/docker-compose
 
-          mkdir workspace
-          mkdir .rstudio_config
-          mkdir rstudio
-          cd rstudio
+          mkdir /home/ec2-user/workspace
+          mkdir /home/ec2-user/.rstudio_config
+          mkdir /home/ec2-user/rstudio
+          cd /home/ec2-user/rstudio
           git clone https://github.com/Data-Observatory/ec2-machines.git
 
           sudo cp -v /home/ec2-user/ec2-machines/config-files/rstudio/docker_boot.service /etc/systemd/system
