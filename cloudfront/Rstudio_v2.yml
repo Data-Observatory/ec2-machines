@@ -1,0 +1,260 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Sets up an RStudio on Amazon EC2 Instance
+# https://repost.aws/knowledge-center/iam-ec2-resource-tags
+# https://former2.com/
+Parameters:
+  InstanceType:
+    Type: String
+    Description: Instance type for RStudio. Default is c5.4xlarge (an expensive machine!)
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+      - t2.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m4.4xlarge
+      - m4.10xlarge
+      - m4.16xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c4.4xlarge
+      - c4.8xlarge
+      - c5.4xlarge
+      - c5.9xlarge
+      - r4.large
+      - r4.xlarge
+      - r4.4xlarge
+      - r4.8xlarge
+      - r4.16xlarge
+      - g2.2xlarge
+      - g2.8xlarge
+      - p2.xlarge
+      - p2.8xlarge
+      - p2.16xlarge
+      - g3.4xlarge
+      - g3.8xlarge
+      - g3.16xlarge
+    ConstraintDescription: Valid instance type in the t2, m4, c4, c5, r4, g2, p2, and g3 families
+    Default: c5.4xlarge
+  Username:
+    Type: String
+    Description: The AWS account username. This is mandatory and will be used to name and access your instance.
+    AllowedPattern: "\\S+"
+  DiskSize:
+    Type: String
+    Description: Instance disk size in GiB (integer number).
+    AllowedPattern: "[0-9]{1,2}"
+    Default: 20
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: Amazon Linux Image ID. 
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC this server will reside in
+  MyIp:
+    Type: String
+    Description: Provide your Public IP (1.2.3.4/32) or (0.0.0.0/0)
+    Default: 0.0.0.0/0
+  KeyPair:
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Description: Amazon EC2 Key Pair
+  SubnetId:
+    Type: "AWS::EC2::Subnet::Id"
+    Description: Subnet ID your instance will launch in. Should be Internet accessible for the purposes of this demo.
+#  InstanceName:
+#    Type: String
+#    Description: Instance Name
+#    Default: RStudio
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "Session Configuration"
+        Parameters: 
+          - Username
+          - DiskSize
+      - 
+        Label: 
+          default: "Amazon EC2 Configuration"
+        Parameters: 
+          - InstanceType
+          - KeyPair
+          - LatestAmiId
+          - VpcId
+          - SubnetId
+          - MyIp
+    ParameterLabels: 
+      VPCID: 
+        default: "Which VPC should this be deployed to?"
+
+
+Resources:
+  RStatsInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      Path: /
+      Roles: 
+        - !Ref RStatsRole
+
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref RStatsEC2Instance
+
+  RStatsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
+        - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+        - "arn:aws:iam::aws:policy/AmazonAthenaFullAccess"
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+              
+  CPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: CPU alarm for my instance
+      AlarmActions:
+        - "arn:aws:automate:us-east-1:ec2:stop"
+      # - Ref: "AlarmTopic"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '300' # Seconds, every 5 minutes will check (300)
+      EvaluationPeriods: '9' # max of 45 minutes of idle time? 9*5
+      Threshold: '1' # % for CPU
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+      - Name: InstanceId
+        Value:
+          Ref: "RStatsEC2Instance"    
+          
+#  AlarmTopic:
+#    Type: AWS::SNS::Topic
+#    Properties: 
+#      DisplayName: !Join ["", [ "Rstudio-AlarmTopic-", !Ref Username ]]
+#      Subscription: 
+#        - Endpoint: "xyz@xyz.com"
+#          Protocol: "email"
+#      TopicName: !Join ["", [ "Rstudio_AlarmTopic_", !Ref AWS::StackName ]]  
+  
+  RstatsEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RStudio and Shiny Security Group
+      GroupName: !Sub 'sgRstudio-${AWS::StackName}'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Sub "${MyIp}"
+          # GroupId: !Ref RstatsEC2SecurityGroup
+          Description: "Allow SSH connections from MyIp"
+        - IpProtocol: tcp
+          FromPort: 8787
+          ToPort: 8787
+          CidrIp: !Sub "${MyIp}"
+          # GroupId: !Ref RstatsEC2SecurityGroup
+          Description: "Allow RStudio connections from MyIp"
+        - IpProtocol: tcp
+          FromPort: 3838
+          ToPort: 3838
+          CidrIp: !Sub "${MyIp}"
+          # GroupId: !Ref RstatsEC2SecurityGroup
+          Description: "Allow Shinny connections from MyIp"   
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Sub "${MyIp}"
+          # GroupId: !Ref RstatsEC2SecurityGroup
+          Description: "Allow outbound connections to mentioned IP"       
+
+  RStatsNetworkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref SubnetId
+      Description: Interface for RStudio Connection
+      GroupSet:
+      - !Ref RstatsEC2SecurityGroup
+      SourceDestCheck: true          
+
+  RStatsEC2Instance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      'AWS::CloudFormation::Init':
+        config:
+          files:
+            /tmp/test.txt:
+              content: Hello world!
+              mode: '000755'
+              owner: root
+              group: root  
+    Properties:
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda #Linux
+        Ebs:
+          VolumeSize: !Ref DiskSize
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPair
+      IamInstanceProfile: !Ref RStatsInstanceProfile
+      # SubnetId: !Ref SubnetId
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref RStatsNetworkInterface
+          DeviceIndex: 0
+      Tags:
+      - Key: Name
+        Value: !Join ["", [ "Rstudio-", !Ref Username ]]
+      - Key: Owner
+        Value: !Ref Username
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update
+          sudo yum-config-manager --enable "rhel-*-optional-rpms"
+          sudo yum install -y docker git
+          sudo systemctl enable docker
+          sudo systemctl start docker
+
+          sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/bin/docker-compose
+          sudo chmod +x /usr/bin/docker-compose
+
+          mkdir workspace
+          mkdir .rstudio_config
+          mkdir rstudio
+          cd rstudio
+          git clone https://github.com/Data-Observatory/ec2-machines.git
+
+          sudo cp -v /home/ec2-user/rstudio/config-files/rstudio/docker_boot.service /etc/systemd/system
+          sudo systemctl enable docker_boot.service
+          sudo systemctl start docker_boot.service
+
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource RStatsEC2Instance --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource RStatsEC2Instance --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT25M
+Outputs:
+  RStudioURL: 
+    Description: HTTP Endpoint for RStudio
+    Value:  !Join ["", [ "http://", !GetAtt RStatsEC2Instance.PublicDnsName,  ":8787"  ]]
+  PublicIp: 
+    Value: !GetAtt RStatsEC2Instance.PublicIp

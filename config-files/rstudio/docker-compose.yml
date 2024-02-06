@@ -1,0 +1,13 @@
+services:
+  rstudio:
+    image: rocker/geospatial:4.3.0
+    restart: always
+    ports:
+      - "8787:8787"
+    environment:
+      PASSWORD: yourpassword
+      ROOT: false
+      DISABLE_AUTH: false
+    volumes:
+      - /home/ec2-user/.rstudio_config:/home/rstudio/.config/rstudio
+      - /home/ec2-user/workspace:/home/rstudio/workspace
